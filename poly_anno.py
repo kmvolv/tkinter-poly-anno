@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from CTkMessagebox import CTkMessagebox
 from PIL import Image, ImageTk
 import tkinter as tk
 import math
@@ -13,6 +14,16 @@ set_vertice_color = "red"                        # NOTE: Color of the remaining 
 line_color = "red"                               # NOTE: Color of the edge of the polygon
 
 def check_intersection(line1, line2):
+    """
+    Check if two line segments intersect.
+    
+    Parameters:
+        line1 (tuple): A tuple containing two points (x1, y1) and (x2, y2) that define the first line segment.
+        line2 (tuple): A tuple containing two points (x3, y3) and (x4, y4) that define the second line segment.
+    
+    Returns:
+    - bool: True if the line segments intersect, False otherwise.
+    """
     x1, y1 = line1[0]
     x2, y2 = line1[1]
     
@@ -20,12 +31,34 @@ def check_intersection(line1, line2):
     x4, y4 = line2[1]
 
     def orientation(p, q, r):
+        """
+        Determines the orientation of three points.
+
+        Parameters:
+            p (tuple): The first point as a tuple (x, y).
+            q (tuple): The second point as a tuple (x, y).
+            r (tuple): The third point as a tuple (x, y).
+        
+        Returns:
+            0 if the points are collinear, 1 if they are clockwise, 2 if they are counterclockwise.
+        """
         val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
         if val == 0:
             return 0  # Collinear
         return 1 if val > 0 else 2  # Clockwise or counterclockwise
 
     def on_segment(p, q, r):
+        """
+        Check if a point q lies on the line segment defined by points p and r.
+
+        Parameters:
+            p (tuple): The coordinates of the first point (x, y).
+            q (tuple): The coordinates of the point to check (x, y).
+            r (tuple): The coordinates of the second point (x, y).
+
+        Returns:
+            bool: True if q lies on the line segment defined by p and r, False otherwise.
+        """
         return (q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0]) and
                 q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1]))
 
@@ -47,6 +80,17 @@ def check_intersection(line1, line2):
     
 
 def check_poly_in(p1,p2,polygon):
+    """
+    Check if a point is inside a polygon using the Shapely library
+
+    Parameters:
+        p1: float or int - The x-coordinate of the point.
+        p2: float or int - The y-coordinate of the point.
+        polygon: Polygon - The polygon to check.
+
+    Returns:
+        bool - True if the point is inside the polygon, False otherwise.
+    """
     point = Point(p1, p2)
     return (polygon.contains(point))
     
@@ -75,8 +119,12 @@ def main():
         pass
         
     def undo_event():
+        """
+        Function to undo the last operation on the canvas
+        
+        """
         global undo_list, curr_vertices_history, starting_vert, poly_list
-    
+        
         try:
             canvas.delete(undo_list[-1][0])
         except:
@@ -90,8 +138,11 @@ def main():
         if len(undo_list): 
             undo_list.pop()
         if len(undo_list) == 0:
+            undo_btn.configure(state = ctk.DISABLED)
+            curr_vertices_history = [[]]
+            starting_vert = None
             return
-
+    
         if undo_list[-1][0] is not None: canvas.itemconfig(undo_list[-1][0], fill=curr_vertice_color)
 
         if(curr_vertices_history[-1] == []):
@@ -106,9 +157,18 @@ def main():
                 starting_vert = None
 
     def open_tag_popup(polygon):
+        """
+        Opens a new window through which the user enters the name of the tag attributed to the polygon
+
+        """
         global poly_list
 
+        canvas.bind("<ButtonPress-1>", lambda : None)
+        canvas.bind("<ButtonRelease-1>", lambda : None)
+        # root.withdraw()
         popup = ctk.CTkToplevel(root)
+        popup.overrideredirect(True)
+
         popup.bind("<Button-1>", lambda event: event.widget.focus_set())
         popup.title("Polygon tag")
         popup.grab_set()
@@ -123,11 +183,23 @@ def main():
         def set_tag(*args):
             """
             Adds the part name as specified by user.
-            """
 
+            """
             new_tag = entry_new_part.get()
+            new_tag = new_tag.lower()
+            if(new_tag == ""):
+                CTkMessagebox(title="Error", message="The polygon tag cannot be empty!", icon="cancel")
+                return
+            else:
+                filtered_polys = [item for item in poly_list if item[0] == new_tag]
+                if len(filtered_polys):
+                    CTkMessagebox(title="Error", message="Duplicate polygon tag detected! Please give a unique tag name.", icon = "cancel")
+                    return
             poly_list.append((new_tag, polygon))
-            popup.destroy()      
+            popup.destroy()  
+            canvas.bind("<ButtonPress-1>", on_button_press)
+            canvas.bind("<ButtonRelease-1>", on_button_release) 
+            # root.deiconify()   
 
         popup.bind("<Return>", set_tag)
         ok_button = ctk.CTkButton(popup, text="OK")
@@ -136,6 +208,20 @@ def main():
 
 
     def on_button_release(event):
+        """
+        Handles the button release event.
+
+        This function checks if the released button overlaps with any existing dots or polygons.
+        If it overlaps with a dot, it checks if it is the starting dot for a polygon. If it is, it completes the polygon.
+        If it overlaps with a polygon, it does not draw the dot.
+        It also checks if the connecting line between the previous dot and the released dot intersects with any existing lines.
+        If it does, it does not draw the line.
+        If none of the above conditions are met, it draws the dot and the connecting line.
+
+        Parameters:
+        - event: The event object representing the button release.
+
+        """
         global starting_vert, poly_list, undo_list, curr_vertices_history
 
         make_polygon = False
@@ -172,16 +258,19 @@ def main():
                     if(line1[-1] != newline[0] and check_intersection(line1,newline)):
                         print('There are intersecting lines! Not gonna draw  >: (')
                         return
-                
-            canvas.itemconfig(undo_list[-1][0], fill=set_vertice_color)
+    
+            if len(undo_list):
+                canvas.itemconfig(undo_list[-1][0], fill=set_vertice_color)
             
             if not make_polygon:
                 myline = canvas.create_line(prev_point["center"], (event.x, event.y), fill=line_color, width=2)
                 undo_list.append([None, myline])
+                undo_btn.configure(state = ctk.NORMAL)
             else:
                 print("Completing polygon okay?")
                 myline = canvas.create_line(prev_point["center"], starting_vert["center"], fill=line_color, width=2)
                 undo_list.append([None, myline])
+                undo_btn.configure(state = ctk.NORMAL)
             
                 vert_sequence = []
                 for vertice in curr_vertices_history[-1]:
@@ -221,6 +310,8 @@ def main():
         curr_vertices_history[-1].append(new_vertice)
 
         undo_list[-1][0] = canvas.create_oval(x1,y1,x2,y2, fill=curr_vertice_color)
+        undo_btn.configure(state = ctk.NORMAL)
+        
 
         # oval_list.append(canvas.create_oval(x1,y1,x2,y2, fill="#FF0000"))
         print("This is poly list : ", poly_list)
@@ -229,7 +320,7 @@ def main():
     canvas.bind("<ButtonPress-1>", on_button_press)
     canvas.bind("<ButtonRelease-1>", on_button_release)
 
-    undo_btn = ctk.CTkButton(master = root, text="Undo", command = undo_event, anchor=tk.CENTER)
+    undo_btn = ctk.CTkButton(master = root, text="Undo", command = undo_event, anchor=tk.CENTER, state=ctk.DISABLED)
     undo_btn.pack(padx=10, pady=5)
 
     root.mainloop()
