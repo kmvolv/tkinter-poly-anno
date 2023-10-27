@@ -266,6 +266,9 @@ def main():
                 myline = canvas.create_line(prev_point["center"], (event.x, event.y), fill=line_color, width=2)
                 undo_list.append([None, myline])
                 undo_btn.configure(state = ctk.NORMAL)
+            elif len(curr_vertices_history[-1])<2:
+                print("You're drawing a polygon that cannot exist buddy")
+                return
             else:
                 print("Completing polygon okay?")
                 myline = canvas.create_line(prev_point["center"], starting_vert["center"], fill=line_color, width=2)
